@@ -290,7 +290,7 @@
     let activeTab = 'fx';
 
     /* ---------- Adesivos (gerados por IA, fundo transparente) ---------- */
-    const STICKERS = ['folha', 'kush', 'baseado'];
+    const STICKERS = ['moldura', 'baseado'];
     // Pontas do baseado.png (fração da largura/altura): piteira em cima à esquerda, brasa embaixo à direita
     const JOINT_FILTER = { x: 0.013, y: 0.013 }, JOINT_EMBER = { x: 0.977, y: 0.893 };
     const sticker = {};
@@ -579,19 +579,25 @@
         return { x: start.x + Math.cos(angle) * len * 0.96, y: start.y + Math.sin(angle) * len * 0.96, faceW };
     }
 
+    // Moldura de folhas por cima da foto inteira; em foto vertical a moldura gira 90°
+    function drawFrame(ctx, w, h) {
+        const im = sticker.moldura;
+        if (!im) return;
+        ctx.save();
+        if (h > w) {
+            ctx.translate(w, 0);
+            ctx.rotate(Math.PI / 2);
+            ctx.drawImage(im, 0, 0, h, w);
+        } else {
+            ctx.drawImage(im, 0, 0, w, h);
+        }
+        ctx.restore();
+    }
+
     function sceneEffects(ctx, w, h, rand) {
         const base = Math.min(w, h);
-        // flores e folhas espalhadas pela parte de baixo
-        const items = ['kush', 'folha', 'kush', 'folha', 'kush'];
-        items.forEach((n, i) => {
-            const x = (0.08 + 0.84 * ((i + rand() * 0.6) / items.length)) * w;
-            const y = h * (0.72 + rand() * 0.22);
-            drawSticker(ctx, n, x, y, base * (0.16 + rand() * 0.1), (rand() - 0.5) * 1.2);
-        });
         // um baseado aceso largado
-        drawJoint(ctx, w * (0.55 + rand() * 0.2), h * 0.9, base * 0.28, -0.15 + (rand() - 0.5) * 0.3);
-        // uma folha grande vazando da borda
-        drawSticker(ctx, 'folha', w * 0.04, h * 0.2, base * 0.38, 0.6);
+        drawJoint(ctx, w * (0.45 + rand() * 0.15), h * 0.8, base * 0.28, -0.15 + (rand() - 0.5) * 0.3);
     }
 
     async function renderEffects() {
@@ -619,6 +625,7 @@
         } else {
             sceneEffects(ctx, w, h, rand);
             smoke(ctx, w, h, rand, null, 90);
+            drawFrame(ctx, w, h); // por último, para as folhas ficarem nítidas por cima da fumaça
         }
     }
 
