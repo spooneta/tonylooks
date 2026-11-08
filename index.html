@@ -278,7 +278,11 @@
 
 
     /* ---------- Tony Looks: envio e resultado da foto ---------- */
-    .dock { max-height: calc(100dvh - var(--m) * 2); overflow-y: auto; }
+    /* --badge: altura do selo "Powered by Netlify" (só no plano grátis); medido em fitBadge() */
+    .dock {
+      bottom: calc(max(var(--m), env(safe-area-inset-bottom)) + var(--badge, 0px));
+      max-height: calc(100dvh - var(--m) * 2 - var(--badge, 0px)); overflow-y: auto;
+    }
     .dock label.pick {
       cursor: pointer; width: 100%; margin: 0; justify-content: center; align-items: center;
       font-size: var(--fs-3); font-weight: 700; color: var(--on-accent);
@@ -299,7 +303,7 @@
     /* Resultado em destaque: o painel ocupa do subtítulo até o pé da tela e a foto preenche o painel.
        --res-top é calculado em fitResult (logo abaixo do subtítulo, já com o título encolhido). */
     #result:not([hidden]) {
-      top: var(--res-top, 30vh); bottom: max(var(--m), env(safe-area-inset-bottom)); max-height: none;
+      top: var(--res-top, 30vh); bottom: calc(max(var(--m), env(safe-area-inset-bottom)) + var(--badge, 0px)); max-height: none;
       display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 12px; overflow: hidden;
     }
     body.has-result .poke { display: none; } /* a dica "Dê remédio pro Tony" passaria por cima da foto */
@@ -1489,10 +1493,12 @@
     const err = $("err"), compose = $("compose"), result = $("result");
     const fileInput = $("fileInput"), fxCanvas = $("fxCanvas"), pickBtnEl = $("pickBtn");
 
-    const dockObs = new ResizeObserver(() => {
+    let badgeH = 0; // altura do selo do Netlify (ver fitBadge)
+    function fitDockH() {
       const d = compose.hidden ? result : compose;
-      document.documentElement.style.setProperty("--dock-h", `${d.offsetHeight + 14}px`);
-    });
+      document.documentElement.style.setProperty("--dock-h", `${d.offsetHeight + 14 + badgeH}px`);
+    }
+    const dockObs = new ResizeObserver(fitDockH);
     dockObs.observe(compose); dockObs.observe(result);
 
     // O painel do resultado começa logo abaixo do subtítulo e vai até o pé da tela
@@ -1505,6 +1511,24 @@
     document.fonts.ready.then(fitResult);
     addEventListener("resize", fitResult);
     fitResult();
+
+    // No plano grátis o Netlify põe o selo "Powered by Netlify" no canto de baixo.
+    // Se o selo ficar na mesma faixa do painel, o painel sobe o tanto da altura do selo.
+    function fitBadge() {
+      const b = document.getElementById("nl-badge-frame");
+      const r = b?.getBoundingClientRect();
+      const d = (compose.hidden ? result : compose).getBoundingClientRect();
+      const hit = r && r.height > 0 && r.left < d.right && r.right > d.left;
+      badgeH = hit ? Math.round(innerHeight - r.top + 8) : 0;
+      document.documentElement.style.setProperty("--badge", `${badgeH}px`);
+      fitDockH();
+    }
+    new MutationObserver(() => {
+      const b = document.getElementById("nl-badge-frame");
+      if (b && !b.dataset.watched) { b.dataset.watched = "1"; new ResizeObserver(fitBadge).observe(b); }
+      fitBadge();
+    }).observe(document.body, { childList: true });
+    addEventListener("resize", fitBadge);
 
     let toastTimer;
     function toast(t) {
@@ -1570,6 +1594,7 @@
       else if (mobile) Object.assign(LAYOUT, { cx: 0.8, cy: 0.1, h: 0.17 });
       else Object.assign(LAYOUT, { cx: 0.85, cy: 0.58, h: 0.55 });
       resize();
+      fitBadge();
       fitResult(); // o subtítulo mudou de lugar com o título encolhido
       requestAnimationFrame(fitResult);
     }
