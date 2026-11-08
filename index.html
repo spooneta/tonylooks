@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<!--
+    Tony Looks: manda uma foto e vira um Tony.
+
+    Duas versões:
+    - Efeitos: roda no navegador, grátis e sem limite. Detector de rosto do Google (MediaPipe)
+      acha olhos e boca; o canvas aplica olho vermelho, olheira, barba por fazer, baseado,
+      fumaça e luz esverdeada. Sem pessoa: escurece, fumaça, folhas, flores e cinzeiro.
+    - Tony total (IA): FLUX.2 klein 9B na Cloudflare Workers AI, por um servidor próprio
+      (pasta tonylooks-worker) com limite diário. Se falhar, fica a versão de efeitos.
+-->
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#07070a">
+    <title>Tony Looks</title>
+    <meta name="description" content="Manda sua foto e vira um Tony: cabelo bagunçado, olho vermelho, baseado e fumaça.">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+
+    <style>
+        :root {
+            --bg: #07070a;
+            --surface: #0e0e12;
+            --surface-2: #14141a;
+            --line: #23232b;
+            --line-strong: #34343f;
+            --text: #ececf1;
+            --text-2: #a3a3b0;
+            --text-3: #8a8a98;
+            --green: #2fd27a;
+            --green-soft: rgba(47, 210, 122, 0.12);
+            --green-line: rgba(47, 210, 122, 0.45);
+            --yellow: #fcd116;
+            --red: #d21034;
+            --radius: 6px;
+            --ease: cubic-bezier(0.16, 1, 0.3, 1);
+            --font: 'Geist', system-ui, sans-serif;
+            --mono: 'Geist Mono', ui-monospace, monospace;
+            --display: 'Orbitron', var(--font);
+        }
+        * { box-sizing: border-box; }
+        [hidden] { display: none !important; }
+        html, body { margin: 0; }
+        body {
+            min-height: 100dvh;
+            background:
+                radial-gradient(70% 50% at 85% 0%, rgba(47, 210, 122, 0.10), transparent 60%),
+                var(--bg);
+            color: var(--text);
+            font: 16px/1.5 var(--font);
+            -webkit-font-smoothing: antialiased;
+        }
+        .shell { max-width: 980px; margin: 0 auto; padding: 0 16px 40px; }
+        @media (min-width: 768px) { .shell { padding: 0 32px 56px; } }
+
+        header { padding: 48px 0 24px; }
+        @media (min-width: 768px) { header { padding: 72px 0 32px; } }
+        h1 {
+            margin: 0 0 10px;
+            font-family: var(--display);
+            font-weight: 900;
+            font-size: clamp(2.2rem, 8vw, 4.5rem);
+            line-height: 1;
+            background: linear-gradient(90deg, var(--red), var(--yellow) 50%, var(--green));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .lede { margin: 0; color: var(--text-2); max-width: 44ch; }
+
+        .card {
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            background: rgba(14, 14, 18, 0.85);
+        }
+
+        /* ---------- Envio ---------- */
+        .drop {
+            display: grid;
+            place-items: center;
+            gap: 10px;
+            min-height: 260px;
+            padding: 28px 16px;
+            border: 1px dashed var(--line-strong);
+            border-radius: var(--radius);
+            margin: 16px;
+            text-align: center;
+            color: var(--text-2);
+            cursor: pointer;
+            transition: border-color .2s var(--ease), background-color .2s var(--ease);
+        }
+        .drop:hover, .drop.over { border-color: var(--green); background: var(--green-soft); }
+        .drop i { font-size: 40px; color: var(--green); }
+        .drop strong { color: var(--text); font-weight: 500; }
+        .drop small { color: var(--text-3); }
+        #fileInput { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+        .consent {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            margin: 0 16px 16px;
+            font-size: 14px;
+            color: var(--text-2);
+        }
+        .consent input { margin-top: 3px; accent-color: var(--green); width: 18px; height: 18px; flex-shrink: 0; }
+
+        /* ---------- Resultado ---------- */
+        .result { display: none; }
+        .result.show { display: block; }
+        .tabs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            border-bottom: 1px solid var(--line);
+        }
+        .tab {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 10px;
+            border: 0;
+            background: transparent;
+            color: var(--text-2);
+            font: 500 14px var(--font);
+            cursor: pointer;
+            position: relative;
+        }
+        .tab + .tab { border-left: 1px solid var(--line); }
+        .tab[aria-selected="true"] { color: var(--green); background: var(--green-soft); }
+        .tab[aria-selected="true"]::after {
+            content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--green);
+        }
+        .tab i { font-size: 18px; }
+
+        .stage {
+            position: relative;
+            display: grid;
+            place-items: center;
+            min-height: 280px;
+            padding: 16px;
+            background: #050507;
+        }
+        .stage canvas, .stage img {
+            display: block;
+            max-width: 100%;
+            max-height: 70vh;
+            border-radius: 4px;
+        }
+        .stage .panel { display: none; width: 100%; place-items: center; }
+        .stage .panel.show { display: grid; }
+
+        .ai-empty {
+            max-width: 40ch;
+            text-align: center;
+            color: var(--text-2);
+            font-size: 14px;
+            display: grid;
+            gap: 14px;
+            justify-items: center;
+        }
+        .ai-empty i { font-size: 36px; color: var(--green); }
+        .ai-empty small { color: var(--text-3); }
+        .ai-status { font-family: var(--mono); font-size: 13px; color: var(--green); }
+        .ai-error { color: #ff8a8c; font-size: 14px; }
+        .spin { animation: spin 1s linear infinite; display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: flex-end;
+            padding: 14px 16px;
+            border-top: 1px solid var(--line);
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            height: 44px;
+            padding: 0 18px;
+            border: 1px solid var(--line-strong);
+            border-radius: var(--radius);
+            background: var(--surface);
+            color: var(--text);
+            font: 500 14px var(--font);
+            white-space: nowrap;
+            cursor: pointer;
+            transition: border-color .2s var(--ease), background-color .2s var(--ease), transform .15s var(--ease);
+        }
+        .btn i { font-size: 18px; }
+        .btn:hover { border-color: var(--green-line); }
+        .btn:active { transform: translateY(1px); }
+        .btn:disabled { opacity: .45; pointer-events: none; }
+        .btn.primary { background: var(--green); border-color: var(--green); color: #04130a; }
+        .btn.primary:hover { background: #27bd6c; }
+        .btn.zap { background: #25d366; border-color: #25d366; color: #052e16; }
+        @media (max-width: 520px) {
+            .actions { display: grid; grid-template-columns: 1fr 1fr; }
+            .actions .wide { grid-column: 1 / -1; }
+        }
+
+        footer { padding: 28px 0 0; font-size: 13px; color: var(--text-3); max-width: 70ch; }
+
+        .toast {
+            position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 16px); opacity: 0;
+            padding: 10px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius);
+            background: var(--surface-2); font-size: 13px; pointer-events: none;
+            transition: transform .35s var(--ease), opacity .35s var(--ease);
+        }
+        .toast.show { transform: translate(-50%, 0); opacity: 1; }
+
+        .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+        :focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+    </style>
+</head>
+<body>
+<div class="shell">
+    <header>
+        <h1>Tony Looks</h1>
+        <p class="lede">Manda sua foto e vira um Tony: cabelo bagunçado, olho vermelho, baseado e fumaça no ar.</p>
+    </header>
+
+    <main>
+        <section class="card" id="uploadCard" aria-label="Enviar foto">
+            <label class="drop" id="drop" for="fileInput">
+                <i class="ph ph-image-square"></i>
+                <strong>Escolha ou tire uma foto</strong>
+                <small>Ou arraste a imagem para cá. JPG, PNG ou WEBP.</small>
+            </label>
+            <input type="file" id="fileInput" accept="image/*">
+            <label class="consent">
+                <input type="checkbox" id="consent">
+                <span>A foto é minha ou a pessoa deixou usar, e todo mundo nela tem mais de 18 anos.</span>
+            </label>
+        </section>
+
+        <section class="card result" id="result" aria-label="Resultado">
+            <div class="tabs" role="tablist">
+                <button class="tab" role="tab" id="tabFx" aria-selected="true"><i class="ph ph-magic-wand"></i>Efeitos</button>
+                <button class="tab" role="tab" id="tabAi" aria-selected="false"><i class="ph ph-sparkle"></i>Tony total (IA)</button>
+            </div>
+            <div class="stage">
+                <div class="panel show" id="panelFx">
+                    <canvas id="fxCanvas" aria-label="Foto com os efeitos do Tony"></canvas>
+                </div>
+                <div class="panel" id="panelAi">
+                    <div class="ai-empty" id="aiEmpty">
+                        <i class="ph ph-sparkle"></i>
+                        <span>A IA muda cabelo, barba e roupa de verdade. Leva poucos segundos.</span>
+                        <button class="btn primary" id="aiBtn" type="button"><i class="ph ph-sparkle"></i>Gerar Tony total</button>
+                        <small>Poucas fotos com IA por dia para todo mundo, então pode acabar. A foto vai para a Cloudflare só para gerar a imagem e não fica guardada.</small>
+                        <div class="ai-status" id="aiStatus" hidden></div>
+                        <div class="ai-error" id="aiError" hidden></div>
+                    </div>
+                    <img id="aiImg" alt="Foto transformada pela IA no estilo do Tony" hidden>
+                </div>
+            </div>
+            <div class="actions">
+                <button class="btn" id="newBtn" type="button"><i class="ph ph-arrow-counter-clockwise"></i>Nova foto</button>
+                <button class="btn" id="downloadBtn" type="button"><i class="ph ph-download-simple"></i>Baixar</button>
+                <button class="btn zap wide" id="zapBtn" type="button"><i class="ph ph-whatsapp-logo"></i>Mandar no Zap</button>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        A versão de efeitos é feita no seu aparelho e a foto não sai dele. Nada é guardado.
+    </footer>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script type="module">
+    import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+
+    const $ = id => document.getElementById(id);
+    const fileInput = $('fileInput'), drop = $('drop'), consent = $('consent');
+    const uploadCard = $('uploadCard'), result = $('result');
+    const fxCanvas = $('fxCanvas');
+    const tabFx = $('tabFx'), tabAi = $('tabAi'), panelFx = $('panelFx'), panelAi = $('panelAi');
+    const aiBtn = $('aiBtn'), aiImg = $('aiImg'), aiEmpty = $('aiEmpty'), aiStatus = $('aiStatus'), aiError = $('aiError');
+
+    let sourceImg = null;      // HTMLImageElement da foto enviada (já reduzida)
+    let hasFace = false;
+    let aiBlob = null;         // resultado da IA
+    let activeTab = 'fx';
+
+    /* ---------- Adesivos (gerados por IA, fundo transparente) ---------- */
+    const STICKERS = ['folha', 'flor'];
+    const sticker = {};
+    const stickersReady = Promise.all(STICKERS.map(n => new Promise(res => {
+        const im = new Image();
+        im.onload = () => { sticker[n] = im; res(); };
+        im.onerror = () => res(); // sem o adesivo, o efeito segue sem ele
+        im.src = `assets/${n}.png`;
+    })));
+
+    /* ---------- Detector de rosto (carrega uma vez) ---------- */
+    let landmarkerPromise = null;
+    function getLandmarker() {
+        if (!landmarkerPromise) {
+            landmarkerPromise = (async () => {
+                const fileset = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+                return FaceLandmarker.createFromOptions(fileset, {
+                    baseOptions: {
+                        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
+                    },
+                    runningMode: 'IMAGE',
+                    numFaces: 4
+                });
+            })().catch(err => { console.warn('Detector de rosto indisponível:', err); return null; });
+        }
+        return landmarkerPromise;
+    }
+    getLandmarker();
+
+    /* ---------- Utilidades ---------- */
+    let toastTimer;
+    function toast(msg) {
+        const t = $('toast');
+        t.textContent = msg;
+        t.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+    }
+
+    // Lê o arquivo e reduz para no máximo 1280 px no lado maior (mais rápido e leve)
+    function loadImage(file) {
+        return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            const im = new Image();
+            im.onload = () => {
+                const max = 1280;
+                const k = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight));
+                const c = document.createElement('canvas');
+                c.width = Math.round(im.naturalWidth * k);
+                c.height = Math.round(im.naturalHeight * k);
+                c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+                URL.revokeObjectURL(url);
+                const out = new Image();
+                out.onload = () => resolve(out);
+                out.src = c.toDataURL('image/jpeg', 0.92);
+            };
+            im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não deu para abrir essa imagem.')); };
+            im.src = url;
+        });
+    }
+
+    // Gerador pseudoaleatório com semente, para o resultado não mudar a cada redesenho
+    function rng(seed) {
+        let s = seed >>> 0 || 1;
+        return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+    }
+
+    const P = (lm, i, w, h) => ({ x: lm[i].x * w, y: lm[i].y * h });
+
+    // Contornos dos olhos no mapa de 478 pontos do MediaPipe
+    const EYE_L = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246];
+    const EYE_R = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398];
+    const IRIS_L = 468, IRIS_R = 473;
+    // Parte de baixo do rosto (bochecha, buço e queixo) para a barba por fazer
+    const BEARD = [234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 397, 288, 361, 323, 454, 352, 411, 425, 266, 330, 327, 2, 98, 101, 36, 203, 187, 123];
+    const LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146];
+
+    function polyPath(ctx, lm, idx, w, h) {
+        ctx.beginPath();
+        idx.forEach((i, k) => {
+            const p = P(lm, i, w, h);
+            k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+        });
+        ctx.closePath();
+    }
+
+    /* ---------- Efeitos ---------- */
+    function gradeAndVignette(ctx, w, h, dark) {
+        // dessatura e puxa para o verde
+        ctx.save();
+        ctx.globalCompositeOperation = 'saturation';
+        ctx.fillStyle = 'rgba(128,128,128,0.35)';
+        ctx.fillRect(0, 0, w, h);
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = `rgba(150, 190, 150, ${dark ? 0.9 : 0.6})`;
+        ctx.fillRect(0, 0, w, h);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = `rgba(4, 10, 6, ${dark ? 0.38 : 0.15})`;
+        ctx.fillRect(0, 0, w, h);
+        const v = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.75);
+        v.addColorStop(0, 'rgba(0,0,0,0)');
+        v.addColorStop(1, `rgba(0,0,0,${dark ? 0.75 : 0.55})`);
+        ctx.fillStyle = v;
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+    }
+
+    function smoke(ctx, w, h, rand, origin, amount) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        const n = Math.round(amount);
+        for (let i = 0; i < n; i++) {
+            let x, y;
+            if (origin && i < n * 0.55) {
+                // coluna de fumaça subindo da brasa, abrindo e ondulando
+                const t = i / (n * 0.55);
+                x = origin.x + Math.sin(t * 7 + rand() * 2) * w * 0.05 * (0.4 + t) + (rand() - 0.5) * w * 0.03;
+                y = origin.y - t * origin.y * 1.05;
+            } else {
+                x = rand() * w;
+                y = rand() * h * 0.85;
+            }
+            const r = (0.04 + rand() * 0.10) * Math.min(w, h);
+            const a = 0.08 + rand() * 0.12;
+            const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+            g.addColorStop(0, `rgba(225, 235, 228, ${a})`);
+            g.addColorStop(1, 'rgba(225, 235, 228, 0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(x - r, y - r, r * 2, r * 2);
+        }
+        // névoa geral
+        ctx.fillStyle = 'rgba(200, 215, 205, 0.06)';
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+    }
+
+    function drawSticker(ctx, name, x, y, size, angle) {
+        const im = sticker[name];
+        if (!im) return;
+        const k = size / Math.max(im.width, im.height);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.drawImage(im, -im.width * k / 2, -im.height * k / 2, im.width * k, im.height * k);
+        ctx.restore();
+    }
+
+    // Baseado desenhado no canvas: piteira na boca (x, y), cone de papel e brasa na ponta
+    function drawJoint(ctx, x, y, len, angle) {
+        const t0 = len * 0.045, t1 = len * 0.085; // espessura na boca e na ponta
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.shadowColor = 'rgba(0,0,0,0.35)';
+        ctx.shadowBlur = len * 0.04;
+        // papel
+        const paper = ctx.createLinearGradient(0, -t1, 0, t1);
+        paper.addColorStop(0, '#fbf6ea');
+        paper.addColorStop(0.5, '#efe6d2');
+        paper.addColorStop(1, '#c9bda3');
+        ctx.fillStyle = paper;
+        ctx.beginPath();
+        ctx.moveTo(0, -t0);
+        ctx.lineTo(len * 0.92, -t1);
+        ctx.quadraticCurveTo(len * 0.97, 0, len * 0.92, t1);
+        ctx.lineTo(0, t0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        // piteira
+        ctx.fillStyle = '#d9b98a';
+        ctx.fillRect(0, -t0, len * 0.16, t0 * 2);
+        // cinza e brasa
+        ctx.fillStyle = '#6b6b6b';
+        ctx.beginPath();
+        ctx.ellipse(len * 0.93, 0, len * 0.03, t1 * 0.95, 0, 0, Math.PI * 2);
+        ctx.fill();
+        const ember = ctx.createRadialGradient(len * 0.96, 0, 0, len * 0.96, 0, len * 0.12);
+        ember.addColorStop(0, 'rgba(255, 220, 120, 1)');
+        ember.addColorStop(0.25, 'rgba(255, 110, 20, 0.9)');
+        ember.addColorStop(1, 'rgba(255, 60, 0, 0)');
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = ember;
+        ctx.fillRect(len * 0.84, -len * 0.12, len * 0.24, len * 0.24);
+        ctx.restore();
+    }
+
+    function faceEffects(ctx, w, h, lm, rand) {
+        const faceW = Math.hypot(P(lm, 454, w, h).x - P(lm, 234, w, h).x, P(lm, 454, w, h).y - P(lm, 234, w, h).y);
+
+        // Barba por fazer: pontinhos escuros na parte de baixo do rosto, sem cobrir a boca
+        ctx.save();
+        polyPath(ctx, lm, BEARD, w, h);
+        ctx.clip();
+        polyPath(ctx, lm, LIPS, w, h);
+        ctx.globalCompositeOperation = 'source-over';
+        const bb = BEARD.map(i => P(lm, i, w, h));
+        const minX = Math.min(...bb.map(p => p.x)), maxX = Math.max(...bb.map(p => p.x));
+        const minY = Math.min(...bb.map(p => p.y)), maxY = Math.max(...bb.map(p => p.y));
+        const lipsPath = new Path2D();
+        LIPS.forEach((i, k) => { const p = P(lm, i, w, h); k ? lipsPath.lineTo(p.x, p.y) : lipsPath.moveTo(p.x, p.y); });
+        lipsPath.closePath();
+        const dots = Math.round((maxX - minX) * (maxY - minY) / 9);
+        for (let i = 0; i < dots; i++) {
+            const x = minX + rand() * (maxX - minX), y = minY + rand() * (maxY - minY);
+            if (ctx.isPointInPath(lipsPath, x, y)) continue;
+            ctx.fillStyle = `rgba(30, 22, 18, ${0.18 + rand() * 0.3})`;
+            const s = Math.max(1, faceW / 260);
+            ctx.fillRect(x, y, s, s * (1 + rand()));
+        }
+        ctx.restore();
+
+        // Olheiras
+        for (const [eye, low] of [[EYE_L, 145], [EYE_R, 374]]) {
+            const c = P(lm, low, w, h);
+            const r = faceW * 0.11;
+            ctx.save();
+            ctx.globalCompositeOperation = 'multiply';
+            const g = ctx.createRadialGradient(c.x, c.y + r * 0.35, 0, c.x, c.y + r * 0.35, r);
+            g.addColorStop(0, 'rgba(110, 70, 90, 0.55)');
+            g.addColorStop(1, 'rgba(110, 70, 90, 0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.ellipse(c.x, c.y + r * 0.35, r, r * 0.55, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Olho vermelho: pinta o branco do olho, preservando a íris
+        for (const [eye, iris] of [[EYE_L, IRIS_L], [EYE_R, IRIS_R]]) {
+            ctx.save();
+            polyPath(ctx, lm, eye, w, h);
+            ctx.clip();
+            const ic = lm[iris] ? P(lm, iris, w, h) : null;
+            const ir = faceW * 0.045;
+            ctx.beginPath();
+            ctx.rect(0, 0, w, h);
+            if (ic) ctx.arc(ic.x, ic.y, ir, 0, Math.PI * 2, true);
+            ctx.clip('evenodd');
+            ctx.globalCompositeOperation = 'multiply';
+            ctx.fillStyle = 'rgba(235, 60, 60, 0.75)';
+            ctx.fillRect(0, 0, w, h);
+            ctx.globalCompositeOperation = 'overlay';
+            ctx.fillStyle = 'rgba(255, 40, 40, 0.35)';
+            ctx.fillRect(0, 0, w, h);
+            ctx.restore();
+        }
+
+        // Baseado no canto da boca
+        const corner = P(lm, 291, w, h), other = P(lm, 61, w, h);
+        const dir = Math.atan2(corner.y - other.y, corner.x - other.x);
+        const len = faceW * 0.42;
+        const angle = dir + 0.25;
+        const start = { x: corner.x - Math.cos(angle) * len * 0.06, y: corner.y - Math.sin(angle) * len * 0.06 };
+        drawJoint(ctx, start.x, start.y, len, angle);
+        // ponta acesa (para a fumaça sair dali)
+        return { x: start.x + Math.cos(angle) * len * 0.96, y: start.y + Math.sin(angle) * len * 0.96, faceW };
+    }
+
+    function sceneEffects(ctx, w, h, rand) {
+        const base = Math.min(w, h);
+        // flores e folhas espalhadas pela parte de baixo
+        const items = ['flor', 'folha', 'flor', 'folha', 'flor'];
+        items.forEach((n, i) => {
+            const x = (0.08 + 0.84 * ((i + rand() * 0.6) / items.length)) * w;
+            const y = h * (0.72 + rand() * 0.22);
+            drawSticker(ctx, n, x, y, base * (0.16 + rand() * 0.1), (rand() - 0.5) * 1.2);
+        });
+        // um baseado aceso largado
+        drawJoint(ctx, w * (0.55 + rand() * 0.2), h * 0.9, base * 0.28, -0.15 + (rand() - 0.5) * 0.3);
+        // uma folha grande vazando da borda
+        drawSticker(ctx, 'folha', w * 0.04, h * 0.2, base * 0.38, 0.6);
+    }
+
+    async function renderEffects() {
+        const im = sourceImg;
+        const w = im.naturalWidth, h = im.naturalHeight;
+        fxCanvas.width = w;
+        fxCanvas.height = h;
+        const ctx = fxCanvas.getContext('2d');
+        ctx.drawImage(im, 0, 0, w, h);
+
+        await stickersReady;
+        const landmarker = await getLandmarker();
+        let faces = [];
+        if (landmarker) {
+            try { faces = landmarker.detect(im).faceLandmarks || []; } catch (e) { console.warn(e); }
+        }
+        hasFace = faces.length > 0;
+        const rand = rng(w * 31 + h * 17);
+
+        gradeAndVignette(ctx, w, h, !hasFace);
+        if (hasFace) {
+            let tip = null;
+            for (const lm of faces) tip = faceEffects(ctx, w, h, lm, rand) || tip;
+            smoke(ctx, w, h, rand, tip, 90);
+        } else {
+            sceneEffects(ctx, w, h, rand);
+            smoke(ctx, w, h, rand, null, 90);
+        }
+    }
+
+    /* ---------- Tony total (IA) ----------
+       Servidor próprio na Cloudflare (pasta tonylooks-worker) com FLUX.2 klein 9B.
+       Os textos do pedido ficam no servidor; aqui só vai a foto reduzida e o modo. */
+    const TONY_API = 'https://tonylooks.spooneta.workers.dev/api/tonyficar';
+
+    // O modelo aceita foto de referência de até 512 px
+    function referenceBlob() {
+        return new Promise(resolve => {
+            const k = Math.min(1, 508 / Math.max(sourceImg.naturalWidth, sourceImg.naturalHeight));
+            const c = document.createElement('canvas');
+            c.width = Math.round(sourceImg.naturalWidth * k);
+            c.height = Math.round(sourceImg.naturalHeight * k);
+            c.getContext('2d').drawImage(sourceImg, 0, 0, c.width, c.height);
+            c.toBlob(resolve, 'image/jpeg', 0.92);
+        });
+    }
+
+    async function generateAI() {
+        aiBtn.disabled = true;
+        aiError.hidden = true;
+        aiStatus.hidden = false;
+        aiStatus.innerHTML = '<i class="ph ph-circle-notch spin"></i> O Tony está se arrumando (para baixo)...';
+        try {
+            const form = new FormData();
+            form.append('image', await referenceBlob(), 'foto.jpg');
+            form.append('modo', hasFace ? 'pessoa' : 'cena');
+            form.append('aspecto', String(sourceImg.naturalWidth / sourceImg.naturalHeight));
+            const res = await fetch(TONY_API, { method: 'POST', body: form });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.image) throw new Error(data.error || 'A IA não respondeu agora. Tenta de novo daqui a pouco.');
+            const bytes = Uint8Array.from(atob(data.image), c => c.charCodeAt(0));
+            const type = bytes[0] === 0x89 ? 'image/png' : 'image/jpeg';
+            aiBlob = new Blob([bytes], { type });
+            aiImg.src = URL.createObjectURL(aiBlob);
+            aiImg.hidden = false;
+            aiEmpty.hidden = true;
+        } catch (err) {
+            console.warn(err);
+            aiError.textContent = err instanceof TypeError
+                ? 'Não deu para falar com a IA agora. Tenta de novo daqui a pouco.'
+                : err.message;
+            aiError.hidden = false;
+        } finally {
+            aiStatus.hidden = true;
+            aiBtn.disabled = false;
+        }
+    }
+    aiBtn.addEventListener('click', generateAI);
+
+    /* ---------- Abas ---------- */
+    function selectTab(t) {
+        activeTab = t;
+        tabFx.setAttribute('aria-selected', String(t === 'fx'));
+        tabAi.setAttribute('aria-selected', String(t === 'ai'));
+        panelFx.classList.toggle('show', t === 'fx');
+        panelAi.classList.toggle('show', t === 'ai');
+    }
+    tabFx.addEventListener('click', () => selectTab('fx'));
+    tabAi.addEventListener('click', () => selectTab('ai'));
+
+    /* ---------- Envio ---------- */
+    async function handleFile(file) {
+        if (!file || !file.type.startsWith('image/')) { toast('Escolha uma imagem.'); return; }
+        if (!consent.checked) {
+            toast('Marque a confirmação da foto antes de continuar.');
+            consent.focus();
+            fileInput.value = '';
+            return;
+        }
+        try {
+            sourceImg = await loadImage(file);
+        } catch (e) { toast(e.message); return; }
+        aiBlob = null;
+        aiImg.hidden = true;
+        aiEmpty.hidden = false;
+        aiError.hidden = true;
+        uploadCard.hidden = true;
+        result.classList.add('show');
+        selectTab('fx');
+        toast('Tonyficando...');
+        await renderEffects();
+        result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+    drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+    drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); handleFile(e.dataTransfer.files[0]); });
+
+    $('newBtn').addEventListener('click', () => {
+        fileInput.value = '';
+        result.classList.remove('show');
+        uploadCard.hidden = false;
+        uploadCard.scrollIntoView({ behavior: 'smooth' });
+    });
+
+    /* ---------- Baixar e compartilhar ---------- */
+    async function currentFile() {
+        if (activeTab === 'ai') {
+            if (!aiBlob) return null;
+            return new File([aiBlob], 'tony-looks-ia.' + (aiBlob.type.includes('png') ? 'png' : 'webp'), { type: aiBlob.type || 'image/webp' });
+        }
+        const blob = await new Promise(r => fxCanvas.toBlob(r, 'image/jpeg', 0.9));
+        return new File([blob], 'tony-looks.jpg', { type: 'image/jpeg' });
+    }
+
+    function download(file) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(file);
+        a.download = file.name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    }
+
+    $('downloadBtn').addEventListener('click', async () => {
+        const f = await currentFile();
+        if (!f) { toast('Gere o Tony total primeiro.'); return; }
+        download(f);
+    });
+
+    $('zapBtn').addEventListener('click', async () => {
+        const f = await currentFile();
+        if (!f) { toast('Gere o Tony total primeiro.'); return; }
+        // Celular: menu de compartilhar do sistema (com o WhatsApp na lista)
+        if (navigator.canShare?.({ files: [f] })) {
+            try { await navigator.share({ files: [f], title: 'Tony Looks' }); }
+            catch (err) { if (err.name !== 'AbortError') toast('Não deu para compartilhar.'); }
+            return;
+        }
+        // Computador: baixa a foto e abre o WhatsApp Web para anexar
+        download(f);
+        toast('Foto baixada! Anexa ela na conversa do WhatsApp.');
+        window.open('https://web.whatsapp.com/', '_blank', 'noopener');
+    });
+</script>
+</body>
+</html>
