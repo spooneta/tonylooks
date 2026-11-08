@@ -6,6 +6,20 @@
   <meta name="theme-color" content="#050b07">
   <title>Tony Looks</title>
   <meta name="description" content="Manda sua foto e vira um Tony.">
+  <!-- Prévia de link (WhatsApp, Telegram, etc.) -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://spooneta.github.io/tonylooks/">
+  <meta property="og:site_name" content="Tony Looks">
+  <meta property="og:title" content="Tony Looks: se pareça com um nóia">
+  <meta property="og:description" content="O Tony te deixa com cara de nóia: olho vermelho, baseado e fumaça.">
+  <meta property="og:image" content="https://spooneta.github.io/tonylooks/assets/og-looks.jpg">
+  <meta property="og:image:secure_url" content="https://spooneta.github.io/tonylooks/assets/og-looks.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="O Tony, de cabelo comprido e barba, ao lado do título TonyLooks">
+  <meta property="og:locale" content="pt_BR">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/png" href="assets/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -64,11 +78,11 @@
     /* Títulos gigantes. O recuo em em compensa a folga lateral das letras (alinhamento óptico). */
     .t {
       position: fixed; margin: 0; pointer-events: none;
-      font-size: var(--display); font-weight: 800; letter-spacing: -0.06em; line-height: .8;
+      font-size: calc(var(--display) * var(--tk, 1)); font-weight: 800; letter-spacing: -0.06em; line-height: .8;
     }
     /* "TonyZator" numa palavra, de margem a margem (tamanho e --ink-l calculados em fitTitle),
        inteira atrás do rosto do boneco. */
-    .t { top: var(--top); left: calc(var(--m) - var(--ink-l, 0px)); white-space: nowrap; }
+    .t { top: var(--top); left: calc(var(--m) - var(--ink-l, 0px) * var(--tk, 1)); white-space: nowrap; }
     .t .b { display: inline-block; color: var(--accent); }
     .t-back { z-index: 1; color: var(--text); }
 
@@ -82,6 +96,11 @@
       transition: background .2s var(--ease), transform .15s var(--ease), opacity 1.1s var(--ease);
     }
     .share-site .ic { color: var(--accent); }
+    /* links do topo: os dois na mesma linha, à direita */
+    .sites { position: fixed; z-index: 5; top: calc(var(--m) - 8px); right: var(--m); display: flex; gap: 8px; }
+    .sites .share-site { position: static; text-decoration: none; height: 36px; padding: 0 14px; }
+    .intro .sites { opacity: 0; }
+    .sites { transition: opacity 1.1s var(--ease); }
     .ic { width: 22px; height: 22px; flex: none; }
     .share-site:hover { background: rgba(238, 245, 234, .1); }
     .share-site:active { transform: scale(.97); }
@@ -92,7 +111,7 @@
 
     .lead {
       position: fixed; z-index: 5; left: var(--m); margin: 0;
-      top: calc(var(--top) + var(--display) * .8 + 16px);
+      top: calc(var(--top) + var(--display) * var(--tk, 1) * .8 + 16px);
       font-size: var(--fs-4); font-weight: 500; line-height: 1.2; letter-spacing: -0.01em;
       text-shadow: 0 2px 18px rgba(0, 0, 0, .8);
     }
@@ -277,8 +296,31 @@
       position: relative; display: grid; place-items: center; border-radius: 16px; overflow: hidden;
       background: rgba(3, 8, 5, .6); border: 1px solid var(--line); min-height: 160px;
     }
-    .stage canvas, .stage img { display: block; max-width: 100%; max-height: 26vh; } /* celular: o rosto do Tony continua à mostra */
-    @media (min-width: 900px) { .stage canvas, .stage img { max-height: 46vh; } }
+    /* Resultado em destaque: o painel ocupa do subtítulo até o pé da tela e a foto preenche o painel.
+       --res-top é calculado em fitResult (logo abaixo do subtítulo, já com o título encolhido). */
+    #result:not([hidden]) {
+      top: var(--res-top, 30vh); bottom: max(var(--m), env(safe-area-inset-bottom)); max-height: none;
+      display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 12px; overflow: hidden;
+    }
+    body.has-result .poke { display: none; } /* a dica "Dê remédio pro Tony" passaria por cima da foto */
+    #result .stage { min-height: 0; height: 100%; }
+    /* a foto se encaixa inteira no painel, centralizada, sem cortar */
+    #result .stage canvas {
+      position: absolute; inset: 0; margin: auto; display: block;
+      max-width: 100%; max-height: 100%; width: auto; height: auto;
+    }
+    #result .row { margin-top: 0; }
+    @media (min-width: 900px) {
+      /* computador: painel largo à esquerda, botões empilhados à direita da foto; o Tony fica no canto direito */
+      #result:not([hidden]) {
+        width: min(64vw, 1100px);
+        grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr) 200px;
+      }
+      #result .row { grid-template-columns: 1fr; align-content: end; }
+      /* no computador o subtítulo sai durante o resultado, para a foto ganhar altura */
+      body.has-result .lead { display: none; }
+      #result .row .btn { white-space: normal; padding: 0 14px; min-height: 52px; text-align: center; line-height: 1.1; }
+    }
     .panel { display: none; width: 100%; place-items: center; }
     .panel.show { display: grid; }
     .ai-empty { display: grid; gap: 12px; justify-items: center; text-align: center; padding: 20px 16px; color: var(--muted); font-size: var(--fs-2); }
@@ -315,8 +357,11 @@
   <canvas id="bg" aria-hidden="true"></canvas>
   <canvas id="gl" aria-label="Tony, o boneco, no meio da fumaça. Toque nele ou mexa na fumaça." role="img"></canvas>
 
-  <p class="lead">Manda sua foto e vira um Tony</p>
-  <button class="share-site" id="share-top" type="button"><svg class="ic" aria-hidden="true"><use href="#i-zap"/></svg> Compartilhar no Zap</button>
+  <p class="lead">Se pareça com um nóia.</p>
+  <nav class="sites" aria-label="Outros sites do Tony">
+    <a class="share-site" href="https://tonyzator.netlify.app/" target="_blank" rel="noopener">TonyZator</a>
+    <a class="share-site" href="https://tonynozap.netlify.app/" target="_blank" rel="noopener">TonyZês</a>
+  </nav>
 
   <p class="kara" id="kara" aria-live="polite"></p>
 
@@ -344,22 +389,8 @@
   </form>
 
   <div class="dock" id="result" hidden>
-    <div class="tabs" role="tablist">
-      <button class="tab" role="tab" id="tabFx" aria-selected="true" type="button"><svg class="ic" aria-hidden="true"><use href="#i-wand"/></svg>Efeitos</button>
-      <button class="tab" role="tab" id="tabAi" aria-selected="false" type="button"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg>Tony total (IA)</button>
-    </div>
     <div class="stage">
-      <div class="panel show" id="panelFx"><canvas id="fxCanvas" aria-label="Foto com os efeitos do Tony"></canvas></div>
-      <div class="panel" id="panelAi">
-        <div class="ai-empty" id="aiEmpty">
-          <span>A IA muda cabelo, roupa e olhos de verdade.</span>
-          <button class="send" id="aiBtn" type="button"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg><span>Gerar Tony total</span></button>
-          <small>Poucas fotos com IA por dia para todo mundo. A foto vai para a Cloudflare só para gerar a imagem.</small>
-          <div class="ai-status" id="aiStatus" hidden></div>
-          <div class="ai-error" id="aiError" hidden></div>
-        </div>
-        <img id="aiImg" alt="Foto transformada pela IA no estilo do Tony" hidden>
-      </div>
+      <canvas id="fxCanvas" aria-label="Foto com os efeitos do Tony"></canvas>
     </div>
     <div class="row">
       <button class="btn" id="downloadBtn" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg> Baixar</button>
@@ -368,7 +399,6 @@
     </div>
   </div>
 
-  <div class="skip"><strong>Toque para ouvir o Tony</strong><span>toque para pular</span></div>
   <div class="toast" id="toast" role="status"></div>
 
   <script type="module">
@@ -378,7 +408,8 @@
       face: "assets/face.webp", rig: "assets/rig.png",
       sai: "assets/r-sai.mp3", quem: "assets/r-quem.mp3", olhando: "assets/r-olhando.mp3",
       cutucar: "assets/r-cutucar.mp3", acordou: "assets/r-acordou.mp3",
-      fotoDeRosto: "assets/foto-de-rosto.mp3", lindao: "assets/lindao.mp3",
+      fotoDeRosto: "assets/foto-de-rosto.mp3",
+      pos1: "assets/pos-1.mp3", pos2: "assets/pos-2.mp3", pos3: "assets/pos-3.mp3",
     };
 
     const $ = (id) => document.getElementById(id);
@@ -810,8 +841,9 @@
     // Posição do Tony na tela (fração da altura) e enquadramento
     const LAYOUT = mobile ? { cx: 0.5, cy: 0.47, h: 0.45 } : { cx: 0.6, cy: 0.52, h: 0.7 };
     // No desktop o rosto fica abaixo do "TonyZator": do fim do título até o pé da tela
+    let layoutLocked = false; // true enquanto o resultado está na tela (o Tony vai para o canto)
     function fitLayoutBelowTitle() {
-      if (mobile) return;
+      if (mobile || layoutLocked) return;
       const top = document.getElementById("title").getBoundingClientRect().bottom + 24;
       const h = Math.max(0.4, (innerHeight - 24 - top) / innerHeight);
       LAYOUT.h = h;
@@ -1439,7 +1471,7 @@
       measure.font = `800 100px "Bricolage Grotesque"`;
       measure.letterSpacing = "-6px";
       const box = measure.measureText("TonyLooks");
-      const size = (innerWidth - m * 2) / (box.actualBoundingBoxLeft + box.actualBoundingBoxRight) * 100;
+      const size = Math.min((innerWidth - m * 2) / (box.actualBoundingBoxLeft + box.actualBoundingBoxRight) * 100, innerHeight * 0.3);
       const root = document.documentElement.style;
       root.setProperty("--display", `${size}px`);
       root.setProperty("--ink-l", `${-box.actualBoundingBoxLeft * size / 100}px`);
@@ -1451,12 +1483,11 @@
     requestAnimationFrame(frame);
 
     // ======================================================================
-    // Tony Looks: envio da foto, efeitos, IA e as falas do Tony
+    // Tony Looks: envio da foto, efeitos e as falas do Tony
+    // (a versão com IA está desligada por enquanto; o servidor tonylooks-worker continua no ar)
     // ======================================================================
     const err = $("err"), compose = $("compose"), result = $("result");
-    const fileInput = $("fileInput"), fxCanvas = $("fxCanvas");
-    const tabFx = $("tabFx"), tabAi = $("tabAi"), panelFx = $("panelFx"), panelAi = $("panelAi");
-    const aiBtn = $("aiBtn"), aiImg = $("aiImg"), aiEmpty = $("aiEmpty"), aiStatus = $("aiStatus"), aiError = $("aiError");
+    const fileInput = $("fileInput"), fxCanvas = $("fxCanvas"), pickBtnEl = $("pickBtn");
 
     const dockObs = new ResizeObserver(() => {
       const d = compose.hidden ? result : compose;
@@ -1464,14 +1495,36 @@
     });
     dockObs.observe(compose); dockObs.observe(result);
 
+    // O painel do resultado começa logo abaixo do subtítulo e vai até o pé da tela
+    function fitResult() {
+      const lead = document.querySelector(".lead");
+      const ref = getComputedStyle(lead).display === "none" ? $("title") : lead; // sem subtítulo, mede pelo título
+      const top = ref.getBoundingClientRect().bottom + 14;
+      document.documentElement.style.setProperty("--res-top", `${Math.round(top)}px`);
+    }
+    document.fonts.ready.then(fitResult);
+    addEventListener("resize", fitResult);
+    fitResult();
+
     let toastTimer;
     function toast(t) {
       const el = $("toast"); el.textContent = t; el.classList.add("show");
       clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), 2400);
     }
 
-    // ---------- Falas: "foto de rosto" ao entrar e "lindão" depois de gerar ----------
-    const clips = { fotoDeRosto: { audio: new Audio(), env: [] }, lindao: { audio: new Audio(), env: [] } };
+    // ---------- Falas: "foto de rosto" ao apertar o botão de foto; depois de gerar, uma das três (sorteada) ----------
+    const clips = {
+      fotoDeRosto: { audio: new Audio(), env: [] },
+      pos1: { audio: new Audio(), env: [] }, pos2: { audio: new Audio(), env: [] }, pos3: { audio: new Audio(), env: [] },
+    };
+    const POS = ["pos1", "pos2", "pos3"];
+    let lastPos = "";
+    // Sorteia uma fala de "ficou pronto", sem repetir a anterior
+    function randomPos() {
+      const options = POS.filter((k) => k !== lastPos);
+      lastPos = options[Math.floor(Math.random() * options.length)];
+      return clips[lastPos];
+    }
     const clipsReady = Promise.all(Object.entries(clips).map(([k, clip]) =>
       fetch(SRC[k]).then((r) => r.arrayBuffer()).then(async (buf) => {
         clip.audio.src = URL.createObjectURL(new Blob([buf], { type: "audio/mpeg" }));
@@ -1480,35 +1533,19 @@
       }).catch(() => {})
     ));
 
-    // Só para conferir no console se as falas estão tocando
-    window.__tonyLooks = { clips, voice, get introSaid() { return introSaid; } };
-
     function onVoiceEnd(main, clip) {
       lastInput = performance.now();
       if (clip && clip === karaFor) clearKaraoke();
     }
 
-    // O navegador só deixa tocar som depois de um toque/clique. Tenta ao terminar a abertura;
-    // se for bloqueado, toca no primeiro toque na página.
-    let introSaid = false;
-    async function sayIntro() {
-      if (introSaid) return;
-      await clipsReady;
-      if (introSaid || mode === "intro" || voice.audio) return;
+    // Toca dentro do clique (o navegador só libera som num gesto da pessoa)
+    function tonySays(clip) {
+      if (mode === "intro") endIntro();
       actx?.resume();
-      const a = clips.fotoDeRosto.audio;
-      a.addEventListener("playing", () => { introSaid = true; }, { once: true });
       lastInput = performance.now(); wake();
-      say(clips.fotoDeRosto, { main: true });
+      say(clip, { main: true });
     }
-    const introWatch = setInterval(() => { if (mode !== "intro") { clearInterval(introWatch); setTimeout(sayIntro, 300); } }, 200);
-    for (const ev of ["pointerdown", "keydown", "touchend"]) {
-      addEventListener(ev, () => { if (!introSaid) setTimeout(sayIntro, mode === "intro" ? 3200 : 50); }, { passive: true });
-    }
-
-    function sayLindao() {
-      clipsReady.then(() => { lastInput = performance.now(); wake(); say(clips.lindao, { main: true }); });
-    }
+    pickBtnEl.addEventListener("click", () => tonySays(clips.fotoDeRosto));
 
     // Baforada do Tony quando a foto fica pronta
     function tonyExhale() {
@@ -1520,19 +1557,26 @@
       }
     }
 
-    // No celular o painel do resultado é alto: o Tony sobe e diminui para a boca ficar à mostra
+    // Com o resultado na tela, a foto é a estrela:
+    // - o título encolhe e o painel com a foto ocupa do subtítulo até o pé da tela;
+    // - celular: o Tony fica pequeno no canto de cima, à direita do título;
+    // - computador: o Tony fica no canto direito, ao lado do painel.
+    const LAYOUT_HOME = { ...LAYOUT };
     function compactTony(on) {
-      if (!mobile) return;
-      LAYOUT.cy = on ? 0.33 : 0.47;
-      LAYOUT.h = on ? 0.3 : 0.45;
+      document.documentElement.style.setProperty("--tk", on ? (mobile ? "0.62" : "0.38") : "1");
+      document.body.classList.toggle("has-result", on);
+      layoutLocked = on && !mobile;
+      if (!on) Object.assign(LAYOUT, LAYOUT_HOME);
+      else if (mobile) Object.assign(LAYOUT, { cx: 0.8, cy: 0.1, h: 0.17 });
+      else Object.assign(LAYOUT, { cx: 0.85, cy: 0.58, h: 0.55 });
       resize();
+      fitResult(); // o subtítulo mudou de lugar com o título encolhido
+      requestAnimationFrame(fitResult);
     }
 
     // ---------- Estado da foto ----------
     let sourceImg = null;      // foto enviada (já reduzida)
     let hasFace = false;
-    let aiBlob = null;         // resultado da IA
-    let activeTab = "fx";
 
     /* ---------- Adesivos (gerados por IA, fundo transparente) ---------- */
     const STICKERS = ['baseado'];
@@ -1851,69 +1895,6 @@
     }
 
 
-    /* ---------- Tony total (IA) ----------
-       Servidor próprio na Cloudflare (pasta tonylooks-worker) com FLUX.2 klein 9B.
-       Os textos do pedido ficam no servidor; aqui só vai a foto reduzida e o modo. */
-    const TONY_API = "https://tonylooks.spooneta.workers.dev/api/tonyficar";
-
-    // O modelo aceita foto de referência de até 512 px
-    function referenceBlob() {
-      return new Promise((resolve) => {
-        const k = Math.min(1, 508 / Math.max(sourceImg.naturalWidth, sourceImg.naturalHeight));
-        const c = document.createElement("canvas");
-        c.width = Math.round(sourceImg.naturalWidth * k);
-        c.height = Math.round(sourceImg.naturalHeight * k);
-        c.getContext("2d").drawImage(sourceImg, 0, 0, c.width, c.height);
-        c.toBlob(resolve, "image/jpeg", 0.92);
-      });
-    }
-
-    async function generateAI() {
-      aiBtn.disabled = true;
-      aiError.hidden = true;
-      aiStatus.hidden = false;
-      aiStatus.textContent = "O Tony está se arrumando (para baixo)...";
-      toke.on = false; mode = "inhale"; modeT = 0;
-      try {
-        const form = new FormData();
-        form.append("image", await referenceBlob(), "foto.jpg");
-        form.append("modo", hasFace ? "pessoa" : "cena");
-        form.append("aspecto", String(sourceImg.naturalWidth / sourceImg.naturalHeight));
-        const res = await fetch(TONY_API, { method: "POST", body: form });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.image) throw new Error(data.error || "A IA não respondeu agora. Tenta de novo daqui a pouco.");
-        const bytes = Uint8Array.from(atob(data.image), (ch) => ch.charCodeAt(0));
-        aiBlob = new Blob([bytes], { type: bytes[0] === 0x89 ? "image/png" : "image/jpeg" });
-        aiImg.src = URL.createObjectURL(aiBlob);
-        aiImg.hidden = false;
-        aiEmpty.hidden = true;
-        tonyExhale();
-        sayLindao();
-      } catch (e) {
-        mode = "idle"; modeT = 0;
-        const [mx, my] = mouthUv();
-        splat(mx, my, rand(-200, 200), 260, [0.2, 0.26, 0.19], 0.2); // tosse
-        squash.v += 4;
-        aiError.textContent = e instanceof TypeError ? "Não deu para falar com a IA agora. Tenta de novo daqui a pouco." : e.message;
-        aiError.hidden = false;
-      } finally {
-        aiStatus.hidden = true;
-        aiBtn.disabled = false;
-      }
-    }
-    aiBtn.addEventListener("click", generateAI);
-
-    // ---------- Abas ----------
-    function selectTab(t) {
-      activeTab = t;
-      tabFx.setAttribute("aria-selected", String(t === "fx"));
-      tabAi.setAttribute("aria-selected", String(t === "ai"));
-      panelFx.classList.toggle("show", t === "fx");
-      panelAi.classList.toggle("show", t === "ai");
-    }
-    tabFx.addEventListener("click", () => selectTab("fx"));
-    tabAi.addEventListener("click", () => selectTab("ai"));
-
     // ---------- Envio ----------
     async function handleFile(file) {
       if (!file || !file.type.startsWith("image/")) { err.textContent = "Escolha uma imagem."; return; }
@@ -1925,16 +1906,14 @@
       // o Tony puxa a fumaça enquanto a foto é preparada
       toke.on = false; mode = "inhale"; modeT = 0;
       const minInhale = new Promise((r) => setTimeout(r, 1400));
-      aiBlob = null; aiImg.hidden = true; aiEmpty.hidden = false; aiError.hidden = true;
       await Promise.all([renderEffects(), minInhale]);
-      selectTab("fx");
       compose.hidden = true; result.hidden = false;
       compactTony(true);
       tonyExhale();
-      sayLindao();
+      clipsReady.then(() => tonySays(randomPos()));
     }
     fileInput.addEventListener("change", () => handleFile(fileInput.files[0]));
-    $("pickBtn").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } });
+    pickBtnEl.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tonySays(clips.fotoDeRosto); fileInput.click(); } });
     for (const el of [compose, document.body]) {
       el.addEventListener("dragover", (e) => e.preventDefault());
       el.addEventListener("drop", (e) => { e.preventDefault(); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
@@ -1948,10 +1927,6 @@
 
     // ---------- Baixar e compartilhar ----------
     async function currentFile() {
-      if (activeTab === "ai") {
-        if (!aiBlob) return null;
-        return new File([aiBlob], "tony-looks-ia." + (aiBlob.type.includes("png") ? "png" : "jpg"), { type: aiBlob.type });
-      }
       const blob = await new Promise((r) => fxCanvas.toBlob(r, "image/jpeg", 0.9));
       return new File([blob], "tony-looks.jpg", { type: "image/jpeg" });
     }
@@ -1962,16 +1937,11 @@
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     }
-    $("downloadBtn").addEventListener("click", async () => {
-      const f = await currentFile();
-      if (!f) { toast("Gere o Tony total primeiro."); return; }
-      downloadFile(f);
-    });
+    $("downloadBtn").addEventListener("click", async () => downloadFile(await currentFile()));
     // Celular: menu de compartilhar com a foto (o WhatsApp aparece na lista).
     // Computador: baixa a foto e abre o WhatsApp Web para anexar.
     $("zapBtn").addEventListener("click", async () => {
       const f = await currentFile();
-      if (!f) { toast("Gere o Tony total primeiro."); return; }
       if (navigator.canShare?.({ files: [f] })) {
         try { await navigator.share({ files: [f], title: "Tony Looks" }); }
         catch (e) { if (e.name !== "AbortError") toast("Não deu para compartilhar."); }
@@ -1980,13 +1950,6 @@
       downloadFile(f);
       toast("Foto baixada! Anexa ela na conversa do WhatsApp.");
       window.open("https://web.whatsapp.com/", "_blank", "noopener");
-    });
-
-    // Botão do topo: manda o link do site no Zap
-    const SITE_URL = "https://spooneta.github.io/tonylooks/";
-    $("share-top").addEventListener("click", () => {
-      const msg = `Tony Looks: manda sua foto e vira um Tony\n${SITE_URL}`;
-      window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
     });
 
   </script>
