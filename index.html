@@ -109,6 +109,7 @@
             font-size: 14px;
             color: var(--text-2);
         }
+        .consent-msg { margin: -6px 16px 16px 44px; font-size: 14px; color: var(--yellow); }
         .consent input { margin-top: 3px; accent-color: var(--green); width: 18px; height: 18px; flex-shrink: 0; }
 
         /* ---------- Resultado ---------- */
@@ -241,6 +242,7 @@
                 <input type="checkbox" id="consent">
                 <span>A foto é minha ou a pessoa deixou usar, e todo mundo nela tem mais de 18 anos.</span>
             </label>
+            <p class="consent-msg" id="consentMsg" role="alert" hidden>Foto escolhida! Marque a confirmação acima para continuar.</p>
         </section>
 
         <section class="card result" id="result" aria-label="Resultado">
@@ -280,8 +282,6 @@
 <div class="toast" id="toast" role="status"></div>
 
 <script type="module">
-    import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
-
     const $ = id => document.getElementById(id);
     const fileInput = $('fileInput'), drop = $('drop'), consent = $('consent');
     const uploadCard = $('uploadCard'), result = $('result');
@@ -308,7 +308,9 @@
     let landmarkerPromise = null;
     function getLandmarker() {
         if (!landmarkerPromise) {
+            // Carrega o detector sob demanda: se falhar, o app segue sem ele (vira modo cena)
             landmarkerPromise = (async () => {
+                const { FaceLandmarker, FilesetResolver } = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
                 const fileset = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
                 return FaceLandmarker.createFromOptions(fileset, {
                     baseOptions: {
@@ -657,14 +659,20 @@
     tabAi.addEventListener('click', () => selectTab('ai'));
 
     /* ---------- Envio ---------- */
+    // Foto escolhida antes de marcar a confirmação fica esperando aqui
+    let pendingFile = null;
+    const consentMsg = $('consentMsg');
+
     async function handleFile(file) {
         if (!file || !file.type.startsWith('image/')) { toast('Escolha uma imagem.'); return; }
         if (!consent.checked) {
-            toast('Marque a confirmação da foto antes de continuar.');
+            pendingFile = file;
+            consentMsg.hidden = false;
             consent.focus();
-            fileInput.value = '';
             return;
         }
+        pendingFile = null;
+        consentMsg.hidden = true;
         try {
             sourceImg = await loadImage(file);
         } catch (e) { toast(e.message); return; }
@@ -680,6 +688,11 @@
         result.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+    // Marcou a confirmação depois de escolher a foto: segue com ela
+    consent.addEventListener('change', () => {
+        if (consent.checked && pendingFile) handleFile(pendingFile);
+        else if (consent.checked) consentMsg.hidden = true;
+    });
     drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('over'));
     drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); handleFile(e.dataTransfer.files[0]); });
